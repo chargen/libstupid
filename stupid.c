@@ -25,6 +25,9 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 
+#include <CoreFoundation/CoreFoundation.h>
+#include <ApplicationServices/ApplicationServices.h>
+
 #include <pthread.h>
 
 //#define LOG
@@ -61,6 +64,19 @@ stopBeingStupid()
 }
 
 
+//returns the path to this dylib
+static const char*
+getLibPath()
+{
+  Dl_info info;
+  if (dladdr(getLibPath, &info)) {
+    return info.dli_fname;
+  } else {
+    return NULL;
+  }
+}
+
+//rewrites a path to use the correct case
 static bool
 find_path (const char *restrict path,
            char *restrict new_path,
@@ -197,6 +213,9 @@ find_path (const char *restrict path,
   
   return true;
 }
+
+
+//-----------libc shims:
 
 int
 stupid_stat (const char *restrict path, struct stat *restrict buf) 
@@ -1160,8 +1179,165 @@ stupid_access(const char *path, int amode)
 
 //extern int __open_nocancel(const char *path, int flags, mode_t mode);
 
+//hook setenv to make sure DYLD_INSERT_LIBRARIES isn't overridden
+
+static char* addDyldInsertValue(const char *value) {
+  const char* path = getLibPath();
+  
+  size_t size = sizeof(char)*(strlen(path)+1+strlen(value)+1);
+  char* ret = malloc(size);
+  memset(ret, 0, size);
+  
+  strcpy(ret, path);
+  strcat(ret, ":");
+  strcat(ret, value);
+  
+  return ret;
+}
+
+#ifdef __i386__
+extern int setenv$UNIX2003(const char *name, const char *value, int overwrite);
+
+int
+stupid_setenvunix(const char *name, const char *value, int overwrite)
+{
+#ifdef LOG
+  fprintf(stderr, "stupid_setenv(%s, %s, %d)\n", name, value, overwrite);
+#endif
+  
+  if (overwrite && strcmp(name, "DYLD_INSERT_LIBRARIES") == 0) {
+    char* newValue = addDyldInsertValue(value);
+    int ret = setenv(name, newValue, overwrite);
+    free(newValue);
+    return ret;
+  }
+  
+  return setenv$UNIX2003(name, value, overwrite);
+}
+
+#endif
+
+int
+stupid_setenv(const char *name, const char *value, int overwrite)
+{
+#ifdef LOG
+  fprintf(stderr, "stupid_setenv(%s, %s, %d)\n", name, value, overwrite);
+#endif
+  
+  if (overwrite && strcmp(name, "DYLD_INSERT_LIBRARIES") == 0) {
+    char* newValue = addDyldInsertValue(value);
+    int ret = setenv(name, newValue, overwrite);
+    free(newValue);
+    return ret;
+  }
+  
+  return setenv(name, value, overwrite);
+}
+
+
+
+//----------LaunchServices shims:
+
+static LSApplicationParameters
+patchApplicationParameters(const LSApplicationParameters *appParams)
+{
+  LSApplicationParameters ret;
+  memcpy(&ret, appParams, sizeof(ret));
+  
+  //Make sure the app doesn't overwrite
+  //DYLD_INSERT_LIBRARIES when launching sub-processes
+  const CFStringRef key = CFSTR("DYLD_INSERT_LIBRARIES");
+  if (appParams->environment
+      && CFDictionaryContainsKey(appParams->environment, key)) {
+    
+    CFMutableDictionaryRef newEnv = CFDictionaryCreateMutableCopy(NULL, 0, appParams->environment);
+    
+    
+    CFStringRef path = CFStringCreateWithCString(NULL, getLibPath(), kCFStringEncodingASCII);
+    
+    
+    CFMutableArrayRef paths = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+    
+    CFArrayAppendValue(paths, path);
+    CFArrayAppendValue(paths, CFDictionaryGetValue(newEnv, key));
+    
+    CFStringRef value = CFStringCreateByCombiningStrings(NULL, paths, CFSTR(":"));
+    CFRelease(paths);
+    
+    
+    CFDictionaryAddValue(newEnv, key, value);
+    CFRelease(value);
+    
+    ret.environment = newEnv;
+  }
+  
+  return ret;
+}
+
+OSStatus
+stupid_LSOpenApplication(const LSApplicationParameters *appParams,
+                         ProcessSerialNumber *outPSN)
+{
+#ifdef LOG
+  fprintf(stderr, "stupid_LSOpenApplication\n");
+#endif
+  
+  LSApplicationParameters newParams = patchApplicationParameters(appParams);
+  
+  return LSOpenApplication(&newParams, outPSN);
+}
+
+OSStatus
+stupid_LSOpenItemsWithRole(const FSRef *inItems,
+                           CFIndex inItemCount,
+                           LSRolesMask inRole,
+                           const AEKeyDesc *inAEParam,
+                           const LSApplicationParameters *inAppParams,
+                           ProcessSerialNumber *outPSNs,
+                           CFIndex inMaxPSNCount)
+{
+#ifdef LOG
+  fprintf(stderr, "stupid_LSOpenItemsWithRole\n");
+#endif
+  
+  LSApplicationParameters newParams = patchApplicationParameters(inAppParams);
+  
+  return LSOpenItemsWithRole(inItems,
+                             inItemCount,
+                             inRole,
+                             inAEParam,
+                             &newParams,
+                             outPSNs,
+                             inMaxPSNCount);
+}
+
+OSStatus
+stupid_LSOpenURLsWithRole(CFArrayRef inURLs,
+                          LSRolesMask inRole,
+                          const AEKeyDesc *inAEParam,
+                          const LSApplicationParameters *inAppParams,
+                          ProcessSerialNumber *outPSNs,
+                          CFIndex inMaxPSNCount)
+{
+#ifdef LOG
+  fprintf(stderr, "stupid_LSOpenURLsWithRole\n");
+#endif
+  
+  LSApplicationParameters newParams = patchApplicationParameters(inAppParams);
+  
+  return LSOpenURLsWithRole(inURLs,
+                            inRole,
+                            inAEParam,
+                            &newParams,
+                            outPSNs,
+                            inMaxPSNCount);
+}
+
+
 static const struct { void *n; void *o; } interposers[]
 __attribute__((section("__DATA, __interpose"))) = {
+  
+  //libc:
   { stupid_stat, stat },
   { stupid_lstat, lstat },
   { stupid_stat64, stat$INODE64 },
@@ -1208,4 +1384,14 @@ __attribute__((section("__DATA, __interpose"))) = {
   { stupid_freopenunix, freopen$UNIX2003 },
 #endif
   { stupid_access, access },
+  
+  { stupid_setenv, setenv },
+#ifdef __i386__
+  { stupid_setenvunix, setenv$UNIX2003 },
+#endif
+  
+  //LaunchServices:
+  { stupid_LSOpenApplication, LSOpenApplication },
+  { stupid_LSOpenItemsWithRole, LSOpenItemsWithRole },
+  { stupid_LSOpenURLsWithRole, LSOpenURLsWithRole },
 };

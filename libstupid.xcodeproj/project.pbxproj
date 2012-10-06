@@ -7,10 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		99889EFB161FDC1C005EF1E9 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99889EFA161FDC1C005EF1E9 /* ApplicationServices.framework */; };
+		99889EFF161FDE49005EF1E9 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99889EFE161FDE49005EF1E9 /* CoreFoundation.framework */; };
 		D3789E9A136030ED00137221 /* stupid.c in Sources */ = {isa = PBXBuildFile; fileRef = D3789E98136030ED00137221 /* stupid.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		99889EFA161FDC1C005EF1E9 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = /System/Library/Frameworks/ApplicationServices.framework; sourceTree = "<absolute>"; };
+		99889EFE161FDE49005EF1E9 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = /System/Library/Frameworks/CoreFoundation.framework; sourceTree = "<absolute>"; };
 		D3789E91136030BD00137221 /* libstupid.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libstupid.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		D3789E98136030ED00137221 /* stupid.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 2; lastKnownFileType = sourcecode.c.c; path = stupid.c; sourceTree = "<group>"; tabWidth = 2; };
 /* End PBXFileReference section */
@@ -20,16 +24,28 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				99889EFF161FDE49005EF1E9 /* CoreFoundation.framework in Frameworks */,
+				99889EFB161FDC1C005EF1E9 /* ApplicationServices.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		99889EFD161FDC27005EF1E9 /* Libraries */ = {
+			isa = PBXGroup;
+			children = (
+				99889EFE161FDE49005EF1E9 /* CoreFoundation.framework */,
+				99889EFA161FDC1C005EF1E9 /* ApplicationServices.framework */,
+			);
+			name = Libraries;
+			sourceTree = "<group>";
+		};
 		D3789E86136030BD00137221 = {
 			isa = PBXGroup;
 			children = (
 				D3789E9C13603B5500137221 /* libstupid */,
+				99889EFD161FDC27005EF1E9 /* Libraries */,
 				D3789E92136030BD00137221 /* Products */,
 			);
 			sourceTree = "<group>";
